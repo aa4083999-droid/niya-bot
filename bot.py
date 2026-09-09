@@ -26,75 +26,69 @@ intents.message_content = True
 intents.members = True
 intents.voice_states = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
-_commands_synced = False
 
+class MyBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix="!", intents=intents)
+        self._commands_synced = False
 
-def get_guild_id_from_config():
-    """從 config.json 或環境變數讀取伺服器 ID（若有）"""
-    guild_id = os.getenv("GUILD_ID")
-    if guild_id and guild_id.isdigit():
-        return int(guild_id)
+    def get_guild_id_from_config(self):
+        """從 config.json 或環境變數讀取伺服器 ID（若有）"""
+        guild_id = os.getenv("GUILD_ID")
+        if guild_id and guild_id.isdigit():
+            return int(guild_id)
 
-    if CONFIG_FILE.exists():
-        try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                gid = data.get("guild_id", "")
-                if str(gid).isdigit():
-                    return int(gid)
-        except Exception as e:
-            log.warning("讀取 config.json 的 guild_id 失敗: %s", e)
-    return None
+        if CONFIG_FILE.exists():
+            try:
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    gid = data.get("guild_id", "")
+                    if str(gid).isdigit():
+                        return int(gid)
+            except Exception as e:
+                log.warning("讀取 config.json 的 guild_id 失敗: %s", e)
+        return None
 
+    async def setup_hook(self):
+        """在機器人登入前載入所有 Cogs，確保指令能被正確收集並同步"""
+        if not COGS_DIR.is_dir():
+            raise FileNotFoundError(f"找不到 cogs 目錄：{COGS_DIR}")
 
-async def load_extensions():
-    """載入 cogs 目錄內所有 Python 模組。"""
-    if not COGS_DIR.is_dir():
-        raise FileNotFoundError(f"找不到 cogs 目錄：{COGS_DIR}")
+        for path in sorted(COGS_DIR.glob("*.py")):
+            if path.name.startswith("_"):
+                continue
 
-    for path in sorted(COGS_DIR.glob("*.py")):
-        if path.name.startswith("_"):
-            continue
+            extension = f"cogs.{path.stem}"
+            try:
+                await self.load_extension(extension)
+                log.info("已成功載入模組：%s", extension)
+            except Exception:
+                log.exception("載入模組失敗：%s", extension)
 
-        extension = f"cogs.{path.stem}"
-
-        try:
-            await bot.load_extension(extension)
-            log.info("已成功載入模組：%s", extension)
-        except Exception:
-            log.exception("載入模組失敗：%s", extension)
-
-
-@bot.event
-async def on_ready():
-    """on_ready 可能因重連再次觸發，因此只同步一次。"""
-    global _commands_synced
-
-    if not _commands_synced:
-        guild_id = get_guild_id_from_config()
+        # 進行指令同步
+        guild_id = self.get_guild_id_from_config()
         try:
             if guild_id:
                 guild = discord.Object(id=guild_id)
-                bot.tree.copy_global_to(guild=guild)
-                synced = await bot.tree.sync(guild=guild)
+                self.tree.copy_global_to(guild=guild)
+                synced = await self.tree.sync(guild=guild)
                 log.info("成功在指定伺服器 (%s) 同步 %d 個斜線指令", guild_id, len(synced))
             else:
-                synced = await bot.tree.sync()
-                log.info("成功進行全域同步 %d 個斜線指令（需等待 Discord快取）", len(synced))
-            _commands_synced = True
+                synced = await self.tree.sync()
+                log.info("成功進行全域同步 %d 個斜線指令（若為全域指令，可能需要最多一小時生效）", len(synced))
+            self._commands_synced = True
         except Exception:
             log.exception("同步斜線指令失敗")
 
-    # 讀取各自 .env 裡的 BOT_STATUS，如果沒寫就預設顯示「線上運作中」
-    status_name = os.getenv("BOT_STATUS", "線上運作中 🚀")
-    await bot.change_presence(
-        activity=discord.Game(
-            name=status_name
+    async def on_ready(self):
+        status_name = os.getenv("BOT_STATUS", "線上運作中 🚀")
+        await self.change_presence(
+            activity=discord.Game(name=status_name)
         )
-    )
+        log.info("機器人已上線！帳號：%s | 目前狀態：%s", self.user, status_name)
 
-    log.info("機器人已上線！帳號：%s | 目前狀態：%s", bot.user, status_name)
+
+bot = MyBot()
 
 
 # ==================== 全域斜線指令錯誤處理 ====================
@@ -128,9 +122,7 @@ async def main():
     if not token:
         raise RuntimeError("找不到 DISCORD_TOKEN 環境變數，請確認 .env 或系統環境變數設定。")
 
-    async with bot:
-        await load_extensions()
-        await bot.start(token)
+    await bot.start(token)
 
 
 if __name__ == "__main__":
