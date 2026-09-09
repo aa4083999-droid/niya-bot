@@ -19,6 +19,7 @@ class GuGu39(commands.Cog):
         self.daily_bets = {}      # 每日下注紀錄
         self.user_balances = {}   # 玩家楓幣餘額
         self.claimed_users = set() # 領過新手紅利的玩家
+        self.bot_admins = set()    # 機器人授權管理員名單
         
         # 遊戲常數
         self.COST_PER_CAR = 3000
@@ -29,12 +30,59 @@ class GuGu39(commands.Cog):
     def cog_unload(self):
         self.auto_draw_task.cancel()
 
+    # ================= 內部權限檢查輔助函式 =================
+    def _is_admin(self, interaction: discord.Interaction) -> bool:
+        is_server_admin = interaction.user.guild_permissions.administrator
+        is_bot_admin = interaction.user.id in self.bot_admins
+        return is_server_admin or is_bot_admin
+
     # ================= 管理員指令：設定下注頻道 =================
     @app_commands.command(name="setbetchannel", description="[管理員] 將當前頻道設定為咕咕谷39的專屬下注頻道")
     @app_commands.default_permissions(administrator=True)
     async def set_bet_channel(self, interaction: discord.Interaction):
         self.bet_channel_id = interaction.channel.id
         await interaction.response.send_message(f"✅ **設定成功！** 本頻道（<#{self.bet_channel_id}>）已成為咕咕谷39的專屬下注與開獎頻道。")
+
+    # ================= 最高管理員：授權/解除機器人管理員 =================
+    @app_commands.command(name="addadmin", description="[伺服器管理員] 授權指定成員成為機器人管理員")
+    @app_commands.default_permissions(administrator=True)
+    async def add_admin(self, interaction: discord.Interaction, member: discord.Member):
+        if member.id in self.bot_admins:
+            await interaction.response.send_message(f"⚠️ {member.mention} 已經是機器人管理員了！", ephemeral=True)
+            return
+
+        self.bot_admins.add(member.id)
+        await interaction.response.send_message(f"✅ **授權成功！** 已將 {member.mention} 登記為機器人管理員。", ephemeral=False)
+
+    @app_commands.command(name="removeadmin", description="[伺服器管理員] 移除指定成員的機器人管理員身份")
+    @app_commands.default_permissions(administrator=True)
+    async def remove_admin(self, interaction: discord.Interaction, member: discord.Member):
+        if member.id not in self.bot_admins:
+            await interaction.response.send_message(f"⚠️ {member.mention} 本來就不是機器人管理員。", ephemeral=True)
+            return
+
+        self.bot_admins.remove(member.id)
+        await interaction.response.send_message(f"🗑️ **已移除！** 已取消 {member.mention} 的機器人管理員身份。", ephemeral=False)
+
+    # ================= 管理員加錢指令 =================
+    @app_commands.command(name="addmoney", description="[管理員] 指定一位玩家並為其增加指定金額的楓幣")
+    async def add_money(self, interaction: discord.Interaction, member: discord.Member, amount: int):
+        if not self._is_admin(interaction):
+            await interaction.response.send_message("❌ **權限不足：** 你必須是伺服器管理員或機器人授權管理員才能使用此指令！", ephemeral=True)
+            return
+
+        if amount <= 0:
+            await interaction.response.send_message("❌ 增加的金額必須大於 0！", ephemeral=True)
+            return
+
+        user_id = member.id
+        self.user_balances[user_id] = self.user_balances.get(user_id, 0) + amount
+        new_balance = self.user_balances[user_id]
+
+        await interaction.response.send_message(
+            f"✅ **管理員操作成功！** 已成功為 {member.mention} 增加 **{amount:,}** 楓幣。\n💰 該玩家目前錢包餘額：**{new_balance:,} 楓幣**",
+            ephemeral=False
+        )
 
     # ================= 玩家領取 100 萬起始資金指令 =================
     @app_commands.command(name="claim", description="領取 1,000,000 楓幣新手下注資金（限領一次）")
@@ -205,6 +253,10 @@ class GuGu39(commands.Cog):
     @app_commands.command(name="draw39", description="[管理員] 手動輸入期數與今彩539開獎號碼並進行派彩")
     @app_commands.default_permissions(administrator=True)
     async def draw_39(self, interaction: discord.Interaction, issue_number: str, n1: str, n2: str, n3: str, n4: str, n5: str):
+        if not self._is_admin(interaction):
+            await interaction.response.send_message("❌ **權限不足：** 你必須是伺服器管理員或機器人授權管理員才能使用此指令！", ephemeral=True)
+            return
+
         num_list = sorted([str(n1).zfill(2), str(n2).zfill(2), str(n3).zfill(2), str(n4).zfill(2), str(n5).zfill(2)])
         winning_numbers = set(num_list)
         
