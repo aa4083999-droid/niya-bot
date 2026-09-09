@@ -12,16 +12,13 @@ log = logging.getLogger("discord_bot")
 class GuGu39(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # 預設下注頻道 ID（若沒有手動設定，可以先預留，或透過指令綁定）
         self.bet_channel_id = None 
         
-        # 遊戲資料庫
-        self.daily_bets = {}      # 每日下注紀錄
-        self.user_balances = {}   # 玩家楓幣餘額
-        self.claimed_users = set() # 領過新手紅利的玩家
-        self.bot_admins = set()    # 機器人授權管理員名單
+        self.daily_bets = {}      
+        self.user_balances = {}   
+        self.claimed_users = set() 
+        self.bot_admins = set()    
         
-        # 遊戲常數
         self.COST_PER_CAR = 3000
         self.PRIZE_PER_CAR = 22000
 
@@ -30,20 +27,17 @@ class GuGu39(commands.Cog):
     def cog_unload(self):
         self.auto_draw_task.cancel()
 
-    # ================= 內部權限檢查輔助函式 =================
     def _is_admin(self, interaction: discord.Interaction) -> bool:
         is_server_admin = interaction.user.guild_permissions.administrator
         is_bot_admin = interaction.user.id in self.bot_admins
         return is_server_admin or is_bot_admin
 
-    # ================= 管理員指令：設定下注頻道 =================
     @app_commands.command(name="setbetchannel", description="[管理員] 將當前頻道設定為咕咕谷39的專屬下注頻道")
     @app_commands.default_permissions(administrator=True)
     async def set_bet_channel(self, interaction: discord.Interaction):
         self.bet_channel_id = interaction.channel.id
         await interaction.response.send_message(f"✅ **設定成功！** 本頻道（<#{self.bet_channel_id}>）已成為咕咕谷39的專屬下注與開獎頻道。")
 
-    # ================= 最高管理員：授權/解除機器人管理員 =================
     @app_commands.command(name="addadmin", description="[伺服器管理員] 授權指定成員成為機器人管理員")
     @app_commands.default_permissions(administrator=True)
     async def add_admin(self, interaction: discord.Interaction, member: discord.Member):
@@ -64,7 +58,6 @@ class GuGu39(commands.Cog):
         self.bot_admins.remove(member.id)
         await interaction.response.send_message(f"🗑️ **已移除！** 已取消 {member.mention} 的機器人管理員身份。", ephemeral=False)
 
-    # ================= 管理員加錢指令 =================
     @app_commands.command(name="addmoney", description="[管理員] 指定一位玩家並為其增加指定金額的楓幣")
     async def add_money(self, interaction: discord.Interaction, member: discord.Member, amount: int):
         if not self._is_admin(interaction):
@@ -84,7 +77,6 @@ class GuGu39(commands.Cog):
             ephemeral=False
         )
 
-    # ================= 玩家領取 100 萬起始資金指令 =================
     @app_commands.command(name="claim", description="領取 1,000,000 楓幣新手下注資金（限領一次）")
     async def claim_funds(self, interaction: discord.Interaction):
         user_id = interaction.user.id
@@ -99,14 +91,12 @@ class GuGu39(commands.Cog):
         balance = self.user_balances[user_id]
         await interaction.response.send_message(f"🎉 **領取成功！** 你獲得了 **1,000,000** 楓幣新手資金！\n💰 目前錢包餘額：**{balance:,} 楓幣**", ephemeral=True)
 
-    # ================= 查詢餘額指令 =================
     @app_commands.command(name="balance", description="查詢自己目前的楓幣餘額")
     async def check_balance(self, interaction: discord.Interaction):
         user_id = interaction.user.id
         balance = self.user_balances.get(user_id, 0)
         await interaction.response.send_message(f"💰 你的目前楓幣餘額：**{balance:,} 楓幣**", ephemeral=True)
 
-    # ================= 派彩核心邏輯 =================
     def calculate_payout_message(self, winning_numbers: set):
         result_msg = "💰 **本期派彩結果：**\n"
         winners_count = 0
@@ -133,13 +123,11 @@ class GuGu39(commands.Cog):
             
         return result_msg
 
-    # ================= 玩家下注事件 =================
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot:
             return
 
-        # 如果還沒設定頻道，或是訊息發在指定的下注頻道才處理
         if self.bet_channel_id and message.channel.id != self.bet_channel_id:
             return
 
@@ -149,7 +137,6 @@ class GuGu39(commands.Cog):
         if not matches:
             return 
 
-        # 如果玩家在正確頻道直接下注但管理員還沒設頻道，自動把當前頻道綁定
         if not self.bet_channel_id:
             self.bet_channel_id = message.channel.id
 
@@ -193,7 +180,6 @@ class GuGu39(commands.Cog):
         
         await message.reply(reply_msg)
 
-    # ================= 自動開獎排程 =================
     tz = datetime.timezone(datetime.timedelta(hours=8))
     draw_time = datetime.time(hour=20, minute=45, tzinfo=tz)
 
@@ -249,7 +235,6 @@ class GuGu39(commands.Cog):
             log.error(f"自動抓取失敗: {e}")
             await channel.send("⚠️ **自動抓取開獎號碼失敗！請管理員使用 `/draw39` 手動開獎。**")
 
-    # ================= 手動開獎指令 =================
     @app_commands.command(name="draw39", description="[管理員] 手動輸入期數與今彩539開獎號碼並進行派彩")
     @app_commands.default_permissions(administrator=True)
     async def draw_39(self, interaction: discord.Interaction, issue_number: str, n1: str, n2: str, n3: str, n4: str, n5: str):
