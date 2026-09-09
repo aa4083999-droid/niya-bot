@@ -65,7 +65,7 @@ class MyBot(commands.Bot):
             except Exception:
                 log.exception("載入模組失敗：%s", extension)
 
-        # 進行指令同步
+        # 進行啟動時的自動指令同步
         guild_id = self.get_guild_id_from_config()
         try:
             if guild_id:
@@ -89,6 +89,25 @@ class MyBot(commands.Bot):
 
 
 bot = MyBot()
+
+
+# ==================== 開發者專屬：手動同步指令 ====================
+@bot.command()
+@commands.is_owner()
+async def sync(ctx, mode: str = None):
+    """
+    手動同步斜線指令 (僅限機器人擁有者使用)
+    用法：
+    !sync        -> 進行全域同步 (需等待 Discord 快取)
+    !sync guild  -> 僅同步至當前伺服器 (秒速生效，適合開發測試)
+    """
+    if mode == "guild":
+        bot.tree.copy_global_to(guild=ctx.guild)
+        synced = await bot.tree.sync(guild=ctx.guild)
+        await ctx.send(f"✅ 已成功將 **{len(synced)}** 個指令同步至 **當前伺服器 ({ctx.guild.name})**！\n*(請大家按 `Ctrl + R` 重新整理 Discord 即可秒速看到指令)*")
+    else:
+        synced = await bot.tree.sync()
+        await ctx.send(f"🌍 已成功 **全域同步 {len(synced)}** 個指令！\n*(全域同步可能需要等待一段時間，若沒看到請按 `Ctrl + R`)*")
 
 
 # ==================== 全域斜線指令錯誤處理 ====================
