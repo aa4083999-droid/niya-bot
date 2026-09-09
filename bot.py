@@ -91,12 +91,12 @@ class MyBot(commands.Bot):
 bot = MyBot()
 
 
-# ==================== 開發者專屬：手動同步指令 ====================
+# ==================== 管理員專屬：手動同步指令 ====================
 @bot.command()
-@commands.is_owner()
+@commands.has_permissions(administrator=True)
 async def sync(ctx, mode: str = None):
     """
-    手動同步斜線指令 (僅限機器人擁有者使用)
+    手動同步斜線指令 (僅限伺服器管理員使用)
     用法：
     !sync        -> 進行全域同步 (需等待 Discord 快取)
     !sync guild  -> 僅同步至當前伺服器 (秒速生效，適合開發測試)
