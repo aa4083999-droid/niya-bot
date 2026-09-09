@@ -128,6 +128,11 @@ class GuGu39(commands.Cog):
         if message.author.bot:
             return
 
+        # 讓所有以 ! 開頭的傳統指令（如 !sync）直接放行給機器人處理
+        if message.content.startswith("!"):
+            await self.bot.process_commands(message)
+            return
+
         if self.bet_channel_id and message.channel.id != self.bet_channel_id:
             return
 
