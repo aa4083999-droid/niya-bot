@@ -9,15 +9,21 @@ import logging
 
 log = logging.getLogger("discord_bot")
 
+# 定義台灣時區與自動開獎時間 (21:00)
+tz_tpe = datetime.timezone(datetime.timedelta(hours=8))
+draw_time = datetime.time(hour=21, minute=0, tzinfo=tz_tpe)
+
 class GuGu39(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.bet_channel_id = None 
+        self.tz = tz_tpe
         
         self.daily_bets = {}      
         self.user_balances = {}   
         self.claimed_users = set() 
         self.bot_admins = set()    
+        self.last_checkin = {}    # 紀錄玩家最後一次簽到的日期 (格式: YYYY-MM-DD)
         
         self.COST_PER_CAR = 3000
         self.PRIZE_PER_CAR = 22000
@@ -76,6 +82,22 @@ class GuGu39(commands.Cog):
             f"✅ **管理員操作成功！** 已成功為 {member.mention} 增加 **{amount:,}** 楓幣。\n💰 該玩家目前錢包餘額：**{new_balance:,} 楓幣**",
             ephemeral=False
         )
+
+    @app_commands.command(name="daily", description="每日簽到領取 50,000 楓幣 (每日 00:00 重置)")
+    async def daily_checkin(self, interaction: discord.Interaction):
+        user_id = interaction.user.id
+        now = datetime.datetime.now(self.tz)
+        today_str = now.strftime("%Y-%m-%d")
+
+        if self.last_checkin.get(user_id) == today_str:
+            await interaction.response.send_message("❌ 你今天已經簽到過了喔！請於台灣時間 00:00 後再來簽到。", ephemeral=True)
+            return
+
+        self.user_balances[user_id] = self.user_balances.get(user_id, 0) + 50000
+        self.last_checkin[user_id] = today_str
+        
+        balance = self.user_balances[user_id]
+        await interaction.response.send_message(f"🎉 **簽到成功！** 你領取了每日獎勵 **50,000** 楓幣！\n💰 目前錢包餘額：**{balance:,} 楓幣**")
 
     @app_commands.command(name="claim", description="領取 1,000,000 楓幣新手下注資金（限領一次）")
     async def claim_funds(self, interaction: discord.Interaction):
@@ -145,6 +167,16 @@ class GuGu39(commands.Cog):
         if not self.bet_channel_id:
             self.bet_channel_id = message.channel.id
 
+        # 檢查下注時間限制 (只允許週一至週六 00:00 ~ 20:00 下注)
+        now = datetime.datetime.now(self.tz)
+        if now.weekday() == 6:  # 6 代表週日
+            await message.reply("❌ **下注失敗！** 今日（週日）為非開獎日，暫不開放下注。")
+            return
+            
+        if now.time() >= datetime.time(hour=20, minute=0):
+            await message.reply("❌ **下注失敗！** 已經超過今日下注截止時間（20:00），現在提交的下注視為無效！")
+            return
+
         user_id = message.author.id
         
         total_bet_cars = 0.0
@@ -159,7 +191,7 @@ class GuGu39(commands.Cog):
 
         current_balance = self.user_balances.get(user_id, 0)
         if current_balance < total_cost:
-            await message.reply(f"❌ **餘額不足！** 你的錢包只有 `{current_balance:,} 楓幣`，此次下注需要 `{total_cost:,} 楓幣`。請先輸入 `/claim` 領取資金！")
+            await message.reply(f"❌ **餘額不足！** 你的錢包只有 `{current_balance:,} 楓幣`，此次下注需要 `{total_cost:,} 楓幣`。請先輸入 `/daily` 或 `/claim` 領取資金！")
             return
 
         self.user_balances[user_id] = current_balance - total_cost
@@ -185,9 +217,7 @@ class GuGu39(commands.Cog):
         
         await message.reply(reply_msg)
 
-    tz = datetime.timezone(datetime.timedelta(hours=8))
-    draw_time = datetime.time(hour=20, minute=45, tzinfo=tz)
-
+    # 每日 21:00 觸發自動開獎與派彩
     @tasks.loop(time=draw_time)
     async def auto_draw_task(self):
         now = datetime.datetime.now(self.tz)
@@ -198,9 +228,10 @@ class GuGu39(commands.Cog):
         if not channel:
             return
 
-        await channel.send("🔍 **自動連線至台灣彩券官方...正在抓取今日 539 開獎結果...**")
+        await channel.send("🔍 **時間到！自動連線抓取今日 今彩539 開獎結果...**")
 
         try:
+            # 採用穩定的第三方開獎資訊站抓取
             url = "https://tw.pilio.idv.tw/ltobig/list.asp"
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
             
@@ -220,13 +251,13 @@ class GuGu39(commands.Cog):
 
             issue_number = now.strftime("%Y%m%d")
             if len(numbers) < 5:
-                raise ValueError("無法抓取完整號碼")
+                raise ValueError("無法抓取完整 5 個號碼")
 
             num_list = sorted(numbers)
             winning_numbers = set(num_list)
 
             announcement = (
-                f"🎰 **咕咕谷39 今日({issue_number})自動開獎結果**\n\n"
+                f"🎰 **咕咕谷39 今日({issue_number})開獎結果**\n\n"
                 f"開獎號碼：{'、'.join(num_list)}\n\n"
                 f"*(正在計算派彩結果...)*"
             )
