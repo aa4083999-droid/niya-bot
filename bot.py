@@ -87,7 +87,7 @@ class MyBot(commands.Bot):
         )
         log.info("機器人已上線！帳號：%s | 目前狀態：%s", self.user, status_name)
 
-    # ================= 新增：最底層的訊息攔截與監控 =================
+    # ================= 訊息攔截與監控 =================
     async def on_message(self, message):
         if message.author.bot:
             return
@@ -95,23 +95,51 @@ class MyBot(commands.Bot):
         # 1. 在終端機印出收到的文字，確認機器人有沒有「瞎掉」
         log.info(f"💬 收到來自 {message.author.name} 的訊息: {message.content}")
 
-        # 2. 終極強制同步模式：無視所有框架、權限與其他 Cog 檔案的干擾
-        if message.content.strip() == "!sync guild":
-            try:
-                await message.channel.send("⏳ 接收到強制同步要求，處理中...")
-                self.tree.copy_global_to(guild=message.guild)
-                synced = await self.tree.sync(guild=message.guild)
-                await message.channel.send(f"🚨 **[終極強制模式]** 成功同步 **{len(synced)}** 個指令至 {message.guild.name}！\n*(請大家按 Ctrl + R 重新整理)*")
-            except Exception as e:
-                await message.channel.send(f"❌ 同步失敗: {e}")
-                log.exception("終極強制同步發生例外錯誤")
-            return # 處理完畢直接結束，絕對不讓其他檔案干擾
-
-        # 3. 讓其他正常的指令繼續運作
+        # 2. 讓下方定義的 @bot.command() async def sync 正常接手運作
         await super().on_message(message)
 
 
 bot = MyBot()
+
+
+# ==================== 管理員專屬：手動同步指令 ====================
+@bot.command()
+async def sync(ctx, mode: str = None):
+    """
+    手動同步斜線指令 (僅限伺服器管理員使用)
+    用法：
+    !sync        -> 進行全域同步 (需等待 Discord 快取)
+    !sync guild  -> 僅同步至當前伺服器 (秒速生效，適合開發測試)
+    """
+    # 手動檢查是否為管理員
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send(":x: 權限不足：你必須是**伺服器管理員**才能使用這個指令！", delete_after=10)
+        return
+
+    try:
+        # 嘗試刪除管理員輸入的指令文字 (例如: !sync guild)，保持版面乾淨
+        try:
+            await ctx.message.delete()
+        except Exception:
+            pass 
+
+        if mode == "guild":
+            bot.tree.copy_global_to(guild=ctx.guild)
+            synced = await bot.tree.sync(guild=ctx.guild)
+            # 加上 delete_after=10，讓這則回覆 10 秒後自動消失！
+            await ctx.send(
+                f":white_check_mark: 已成功將 **{len(synced)}** 個指令同步至 **當前伺服器 ({ctx.guild.name})**！\n*(請大家按 `Ctrl + R` 重新整理，此訊息將於 10 秒後自動刪除)*", 
+                delete_after=10
+            )
+        else:
+            synced = await bot.tree.sync()
+            await ctx.send(
+                f":earth_africa: 已成功 **全域同步 {len(synced)}** 個指令！\n*(此訊息將於 10 秒後自動刪除)*", 
+                delete_after=10
+            )
+    except Exception as e:
+        log.exception("手動同步指令執行失敗")
+        await ctx.send(f":x: 執行同步時發生錯誤: `{e}`", delete_after=15)
 
 
 # ==================== 全域斜線指令錯誤處理 ====================
