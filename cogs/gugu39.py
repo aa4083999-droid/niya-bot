@@ -23,7 +23,7 @@ class GuGu39(commands.Cog):
         self.user_balances = {}   
         self.claimed_users = set() 
         self.bot_admins = set()    
-        self.last_checkin = {}    # 紀錄玩家最後一次簽到的日期 (格式: YYYY-MM-DD)
+        self.last_checkin = {}    
         
         self.COST_PER_CAR = 3000
         self.PRIZE_PER_CAR = 22000
@@ -38,50 +38,59 @@ class GuGu39(commands.Cog):
         is_bot_admin = interaction.user.id in self.bot_admins
         return is_server_admin or is_bot_admin
 
-    @app_commands.command(name="setbetchannel", description="[管理員] 將當前頻道設定為咕咕谷39的專屬下注頻道")
+    @app_commands.command(name="setbetchannel", description="[管理員] 將當前頻道設定為專屬下注頻道")
     @app_commands.default_permissions(administrator=True)
     async def set_bet_channel(self, interaction: discord.Interaction):
         self.bet_channel_id = interaction.channel.id
         await interaction.response.send_message(f"✅ **設定成功！** 本頻道（<#{self.bet_channel_id}>）已成為咕咕谷39的專屬下注與開獎頻道。")
 
-    @app_commands.command(name="addadmin", description="[伺服器管理員] 授權指定成員成為機器人管理員")
+    @app_commands.command(name="checkmoney", description="[管理員] 查看指定玩家並可選擇修改其餘額")
     @app_commands.default_permissions(administrator=True)
-    async def add_admin(self, interaction: discord.Interaction, member: discord.Member):
-        if member.id in self.bot_admins:
-            await interaction.response.send_message(f"⚠️ {member.mention} 已經是機器人管理員了！", ephemeral=True)
-            return
-
-        self.bot_admins.add(member.id)
-        await interaction.response.send_message(f"✅ **授權成功！** 已將 {member.mention} 登記為機器人管理員。", ephemeral=False)
-
-    @app_commands.command(name="removeadmin", description="[伺服器管理員] 移除指定成員的機器人管理員身份")
-    @app_commands.default_permissions(administrator=True)
-    async def remove_admin(self, interaction: discord.Interaction, member: discord.Member):
-        if member.id not in self.bot_admins:
-            await interaction.response.send_message(f"⚠️ {member.mention} 本來就不是機器人管理員。", ephemeral=True)
-            return
-
-        self.bot_admins.remove(member.id)
-        await interaction.response.send_message(f"🗑️ **已移除！** 已取消 {member.mention} 的機器人管理員身份。", ephemeral=False)
-
-    @app_commands.command(name="addmoney", description="[管理員] 指定一位玩家並為其增加指定金額的楓幣")
-    async def add_money(self, interaction: discord.Interaction, member: discord.Member, amount: int):
+    async def check_money(self, interaction: discord.Interaction, member: discord.Member, new_balance: int = None):
         if not self._is_admin(interaction):
-            await interaction.response.send_message("❌ **權限不足：** 你必須是伺服器管理員或機器人授權管理員才能使用此指令！", ephemeral=True)
+            await interaction.response.send_message("❌ **權限不足**", ephemeral=True)
             return
-
-        if amount <= 0:
-            await interaction.response.send_message("❌ 增加的金額必須大於 0！", ephemeral=True)
-            return
-
+        
         user_id = member.id
-        self.user_balances[user_id] = self.user_balances.get(user_id, 0) + amount
-        new_balance = self.user_balances[user_id]
+        current = self.user_balances.get(user_id, 0)
+        
+        if new_balance is None:
+            await interaction.response.send_message(f"🔍 玩家 {member.mention} 目前的餘額為：**{current:,} 楓幣**")
+        else:
+            self.user_balances[user_id] = new_balance
+            await interaction.response.send_message(f"✅ **修改成功！** 已將玩家 {member.mention} 的餘額從 **{current:,}** 強制更改為 **{new_balance:,} 楓幣**")
 
-        await interaction.response.send_message(
-            f"✅ **管理員操作成功！** 已成功為 {member.mention} 增加 **{amount:,}** 楓幣。\n💰 該玩家目前錢包餘額：**{new_balance:,} 楓幣**",
-            ephemeral=False
-        )
+    @app_commands.command(name="test539", description="[測試] 查詢近期今彩539開獎號碼 (請輸入期數如 113217 或日期)")
+    @app_commands.default_permissions(administrator=True)
+    async def test_539(self, interaction: discord.Interaction, keyword: str):
+        await interaction.response.defer()
+        try:
+            # 精確使用 539 的頁面
+            url = "https://tw.pilio.idv.tw/d539/list.asp"
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, timeout=10) as response:
+                    html = await response.text()
+                    
+            soup = BeautifulSoup(html, "html.parser")
+            rows = soup.find_all('tr')
+            
+            for row in rows:
+                text = row.get_text()
+                if keyword in text:
+                    number_tags = row.find_all('b')
+                    numbers = [tag.get_text(strip=True) for tag in number_tags if tag.get_text(strip=True).isdigit() and 1 <= int(tag.get_text(strip=True)) <= 39]
+                    if len(numbers) >= 5:
+                        nums = sorted(numbers[:5])
+                        await interaction.followup.send(f"🔍 **測試抓取成功！**\n找到包含關鍵字 `{keyword}` 的期數，開獎號碼為：**{'、'.join(nums)}**")
+                        return
+                        
+            await interaction.followup.send(f"⚠️ 找不到包含 `{keyword}` 的近期開獎紀錄。可能是網頁未更新，或期數輸入有誤。")
+
+        except Exception as e:
+            log.error(f"測試抓取失敗: {e}")
+            await interaction.followup.send(f"❌ 抓取失敗，錯誤訊息：{e}")
 
     @app_commands.command(name="daily", description="每日簽到領取 50,000 楓幣 (每日 00:00 重置)")
     async def daily_checkin(self, interaction: discord.Interaction):
@@ -150,7 +159,6 @@ class GuGu39(commands.Cog):
         if message.author.bot:
             return
 
-        # 讓所有以 ! 開頭的傳統指令（如 !sync）直接放行給機器人處理
         if message.content.startswith("!"):
             await self.bot.process_commands(message)
             return
@@ -167,9 +175,8 @@ class GuGu39(commands.Cog):
         if not self.bet_channel_id:
             self.bet_channel_id = message.channel.id
 
-        # 檢查下注時間限制 (只允許週一至週六 00:00 ~ 20:00 下注)
         now = datetime.datetime.now(self.tz)
-        if now.weekday() == 6:  # 6 代表週日
+        if now.weekday() == 6:  
             await message.reply("❌ **下注失敗！** 今日（週日）為非開獎日，暫不開放下注。")
             return
             
@@ -217,7 +224,6 @@ class GuGu39(commands.Cog):
         
         await message.reply(reply_msg)
 
-    # 每日 21:00 觸發自動開獎與派彩
     @tasks.loop(time=draw_time)
     async def auto_draw_task(self):
         now = datetime.datetime.now(self.tz)
@@ -231,9 +237,8 @@ class GuGu39(commands.Cog):
         await channel.send("🔍 **時間到！自動連線抓取今日 今彩539 開獎結果...**")
 
         try:
-            # 採用穩定的第三方開獎資訊站抓取
-            url = "https://tw.pilio.idv.tw/ltobig/list.asp"
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            url = "https://tw.pilio.idv.tw/d539/list.asp"
+            headers = {'User-Agent': 'Mozilla/5.0'}
             
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, headers=headers, timeout=10) as response:
@@ -271,11 +276,11 @@ class GuGu39(commands.Cog):
             log.error(f"自動抓取失敗: {e}")
             await channel.send("⚠️ **自動抓取開獎號碼失敗！請管理員使用 `/draw39` 手動開獎。**")
 
-    @app_commands.command(name="draw39", description="[管理員] 手動輸入期數與今彩539開獎號碼並進行派彩")
+    @app_commands.command(name="draw39", description="[管理員] 手動輸入期數與開獎號碼並進行派彩")
     @app_commands.default_permissions(administrator=True)
     async def draw_39(self, interaction: discord.Interaction, issue_number: str, n1: str, n2: str, n3: str, n4: str, n5: str):
         if not self._is_admin(interaction):
-            await interaction.response.send_message("❌ **權限不足：** 你必須是伺服器管理員或機器人授權管理員才能使用此指令！", ephemeral=True)
+            await interaction.response.send_message("❌ **權限不足**", ephemeral=True)
             return
 
         num_list = sorted([str(n1).zfill(2), str(n2).zfill(2), str(n3).zfill(2), str(n4).zfill(2), str(n5).zfill(2)])
