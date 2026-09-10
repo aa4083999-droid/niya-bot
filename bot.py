@@ -93,7 +93,6 @@ bot = MyBot()
 
 # ==================== 管理員專屬：手動同步指令 ====================
 @bot.command()
-@commands.has_permissions(administrator=True)
 async def sync(ctx, mode: str = None):
     """
     手動同步斜線指令 (僅限伺服器管理員使用)
@@ -101,13 +100,22 @@ async def sync(ctx, mode: str = None):
     !sync        -> 進行全域同步 (需等待 Discord 快取)
     !sync guild  -> 僅同步至當前伺服器 (秒速生效，適合開發測試)
     """
-    if mode == "guild":
-        bot.tree.copy_global_to(guild=ctx.guild)
-        synced = await bot.tree.sync(guild=ctx.guild)
-        await ctx.send(f"✅ 已成功將 **{len(synced)}** 個指令同步至 **當前伺服器 ({ctx.guild.name})**！\n*(請大家按 `Ctrl + R` 重新整理 Discord 即可秒速看到指令)*")
-    else:
-        synced = await bot.tree.sync()
-        await ctx.send(f"🌍 已成功 **全域同步 {len(synced)}** 個指令！\n*(全域同步可能需要等待一段時間，若沒看到請按 `Ctrl + R`)*")
+    # 手動檢查是否為管理員，避免裝飾器靜默失敗
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("❌ 權限不足：你必須是**伺服器管理員**才能使用這個指令！", delete_after=10)
+        return
+
+    try:
+        if mode == "guild":
+            bot.tree.copy_global_to(guild=ctx.guild)
+            synced = await bot.tree.sync(guild=ctx.guild)
+            await ctx.send(f"✅ 已成功將 **{len(synced)}** 個指令同步至 **當前伺服器 ({ctx.guild.name})**！\n*(請大家按 `Ctrl + R` 重新整理 Discord 即可秒速看到指令)*")
+        else:
+            synced = await bot.tree.sync()
+            await ctx.send(f"🌍 已成功 **全域同步 {len(synced)}** 個指令！\n*(全域同步可能需要等待一段時間，若沒看到請按 `Ctrl + R`)*")
+    except Exception as e:
+        log.exception("手動同步指令執行失敗")
+        await ctx.send(f"❌ 執行同步時發生錯誤: `{e}`")
 
 
 # ==================== 全域斜線指令錯誤處理 ====================
