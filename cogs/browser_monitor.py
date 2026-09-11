@@ -1,6 +1,7 @@
 import asyncio
-import json
+json = json
 import os
+import re
 import aiohttp
 import discord
 from collections import deque
@@ -79,19 +80,29 @@ class BrowserMonitor(commands.Cog):
                                     continue
                                 self.processed_ids.append(msg_id)
 
-                                # 💡 比對 7 人的名字是否存在於這則訊息的任何角落
+                                # 💡 使用精準的正規表達式比對名字，避免「金桔檸檬」或「檸檬草」誤觸
+                                matched_char = None
                                 for char in target_characters:
-                                    if char and char in full_text:
-                                        print(f"🎉 偵測到目標玩家 [{char}] 中獎！")
-                                        channel = self.bot.get_channel(int(notify_channel_id))
-                                        if channel:
-                                            await channel.send(
-                                                f"🚨 **轉蛋中獎捷報** 🚨\n"
-                                                f"恭喜玩家 **{char}** 中獎啦！\n"
-                                                f"📜 完整廣播資訊：\n> {content or embed_texts}"
-                                            )
+                                    if not char:
+                                        continue
+                                    # 構造正則：確保目標名字前後「不是」其他中文字，藉此排除金桔檸檬、檸檬草等情況
+                                    # \u4e00-\u9fa5 代表中文範圍
+                                    pattern = r'(?<![\u4e00-\u9fa5])' + re.escape(char) + r'(?![\u4e00-\u9fa5])'
+                                    if re.search(pattern, full_text):
+                                        matched_char = char
                                         break
-                                        
+
+                                if matched_char:
+                                    print(f"🎉 偵測到目標玩家 [{matched_char}] 中獎！")
+                                    channel = self.bot.get_channel(int(notify_channel_id))
+                                    if channel:
+                                        await channel.send(
+                                            f"🚨 **轉蛋中獎捷報** 🚨\n"
+                                            f"恭喜玩家 **{matched_char}** 中獎啦！\n"
+                                            f"📜 完整廣播資訊：\n> {content or embed_texts}"
+                                        )
+                                    break
+                                    
                             if current_batch:
                                 self.latest_messages = current_batch
                                 
