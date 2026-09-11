@@ -60,7 +60,7 @@ class GuGu39(commands.Cog):
             self.user_balances[user_id] = new_balance
             await interaction.response.send_message(f"✅ **修改成功！** 已將玩家 {member.mention} 的餘額從 **{current:,}** 強制更改為 **{new_balance:,} 楓幣**")
 
-    @app_commands.command(name="test539", description="[測試] 查詢近期今彩539開獎號碼 (請輸入期數如 113217 或日期)")
+    @app_commands.command(name="test539", description="[測試] 查詢指定期數今彩539開獎號碼 (例如 115000220)")
     @app_commands.default_permissions(administrator=True)
     async def test_539(self, interaction: discord.Interaction, keyword: str):
         await interaction.response.defer()
@@ -81,8 +81,16 @@ class GuGu39(commands.Cog):
                     number_tags = row.find_all('b')
                     numbers = [tag.get_text(strip=True) for tag in number_tags if tag.get_text(strip=True).isdigit() and 1 <= int(tag.get_text(strip=True)) <= 39]
                     if len(numbers) >= 5:
-                        nums = sorted(numbers[:5])
-                        await interaction.followup.send(f"🔍 **測試抓取成功！**\n找到包含關鍵字 `{keyword}` 的期數，開獎號碼為：**{'、'.join(nums)}**")
+                        # 1. 大小順序（由小到大排序）
+                        sorted_nums = sorted(numbers[:5])
+                        # 2. 落球順序（網頁原本抓到的原始順序）
+                        ball_order = numbers[:5]
+                        
+                        await interaction.followup.send(
+                            f"🔍 **期數 `{keyword}` 查詢成功！**\n"
+                            f"• **大小順序**：`{'、'.join(sorted_nums)}`\n"
+                            f"• **落球順序**：`{'、'.join(ball_order)}`"
+                        )
                         return
                         
             await interaction.followup.send(f"⚠️ 找不到包含 `{keyword}` 的近期開獎紀錄。可能是網頁未更新，或期數輸入有誤。")
@@ -236,7 +244,6 @@ class GuGu39(commands.Cog):
         await channel.send("🔍 **時間到！自動連線抓取今日 今彩539 開獎結果...**")
 
         try:
-            # 修正為正確的 539 列表頁面，並對齊 test539 的穩健解析邏輯
             url = "https://tw.pilio.idv.tw/d539/list.asp"
             headers = {'User-Agent': 'Mozilla/5.0'}
             
@@ -248,7 +255,6 @@ class GuGu39(commands.Cog):
             rows = soup.find_all('tr')
             
             numbers = []
-            # 從表格列中尋找包含最新開獎資料的行
             for row in rows:
                 number_tags = row.find_all('b')
                 extracted = [tag.get_text(strip=True) for tag in number_tags if tag.get_text(strip=True).isdigit() and 1 <= int(tag.get_text(strip=True)) <= 39]
