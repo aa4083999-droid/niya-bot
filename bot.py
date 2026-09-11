@@ -65,14 +65,18 @@ class MyBot(commands.Bot):
             except Exception:
                 log.exception("載入模組失敗：%s", extension)
 
-        # 進行啟動時的自動指令同步
+        # 進行強效防雙胞胎的開機自動指令同步
         guild_id = self.get_guild_id_from_config()
         try:
+            # 清除全域指令快取，避免與伺服器指令疊加
+            self.tree.clear_commands(guild=None)
+            
             if guild_id:
                 guild = discord.Object(id=guild_id)
+                self.tree.clear_commands(guild=guild)
                 self.tree.copy_global_to(guild=guild)
                 synced = await self.tree.sync(guild=guild)
-                log.info("成功在指定伺服器 (%s) 同步 %d 個斜線指令", guild_id, len(synced))
+                log.info("成功在指定伺服器 (%s) 清除並同步 %d 個斜線指令", guild_id, len(synced))
             else:
                 synced = await self.tree.sync()
                 log.info("成功進行全域同步 %d 個斜線指令", len(synced))
@@ -109,7 +113,7 @@ async def sync(ctx, mode: str = None):
     手動同步斜線指令 (僅限伺服器管理員使用)
     用法：
     !sync        -> 進行全域同步 (需等待 Discord 快取)
-    !sync guild  -> 僅同步至當前伺服器 (秒速生效，適合開發測試)
+    !sync guild  -> 清除舊快取並僅同步至當前伺服器 (秒速生效，解決雙胞胎問題)
     """
     # 手動檢查是否為管理員
     if not ctx.author.guild_permissions.administrator:
@@ -124,11 +128,17 @@ async def sync(ctx, mode: str = None):
             pass 
 
         if mode == "guild":
+            # 1. 先清除該伺服器上殘留的舊指令與重複快取
+            ctx.bot.tree.clear_commands(guild=ctx.guild)
+            await ctx.bot.tree.sync(guild=ctx.guild)
+            
+            # 2. 重新將全域指令複製並同步到當前伺服器
             bot.tree.copy_global_to(guild=ctx.guild)
             synced = await bot.tree.sync(guild=ctx.guild)
-            # 加上 delete_after=10，讓這則回覆 10 秒後自動消失！
+            
+            # 3. 回報並在 10 秒後自動刪除
             await ctx.send(
-                f":white_check_mark: 已成功將 **{len(synced)}** 個指令同步至 **當前伺服器 ({ctx.guild.name})**！\n*(請大家按 `Ctrl + R` 重新整理，此訊息將於 10 秒後自動刪除)*", 
+                f":white_check_mark: 已徹底清除舊快取並重新同步 **{len(synced)}** 個指令至 **當前伺服器 ({ctx.guild.name})**！\n*(請大家按 `Ctrl + R` 重新整理，重複的指令就會消失)*", 
                 delete_after=10
             )
         else:
