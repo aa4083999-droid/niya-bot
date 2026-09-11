@@ -65,7 +65,6 @@ class GuGu39(commands.Cog):
     async def test_539(self, interaction: discord.Interaction, keyword: str):
         await interaction.response.defer()
         try:
-            # 精確使用 539 的頁面
             url = "https://tw.pilio.idv.tw/d539/list.asp"
             headers = {'User-Agent': 'Mozilla/5.0'}
             
@@ -237,6 +236,7 @@ class GuGu39(commands.Cog):
         await channel.send("🔍 **時間到！自動連線抓取今日 今彩539 開獎結果...**")
 
         try:
+            # 修正為正確的 539 列表頁面，並對齊 test539 的穩健解析邏輯
             url = "https://tw.pilio.idv.tw/d539/list.asp"
             headers = {'User-Agent': 'Mozilla/5.0'}
             
@@ -245,18 +245,20 @@ class GuGu39(commands.Cog):
                     html = await response.text()
                     
             soup = BeautifulSoup(html, "html.parser")
-            number_tags = soup.find_all('b')
+            rows = soup.find_all('tr')
+            
             numbers = []
-            for tag in number_tags:
-                text = tag.get_text(strip=True)
-                if text.isdigit() and 1 <= int(text) <= 39:
-                    numbers.append(text.zfill(2))
-                    if len(numbers) == 5:
-                        break
+            # 從表格列中尋找包含最新開獎資料的行
+            for row in rows:
+                number_tags = row.find_all('b')
+                extracted = [tag.get_text(strip=True) for tag in number_tags if tag.get_text(strip=True).isdigit() and 1 <= int(tag.get_text(strip=True)) <= 39]
+                if len(extracted) >= 5:
+                    numbers = extracted[:5]
+                    break
 
             issue_number = now.strftime("%Y%m%d")
             if len(numbers) < 5:
-                raise ValueError("無法抓取完整 5 個號碼")
+                raise ValueError("無法從網頁表格中抓取完整 5 個號碼")
 
             num_list = sorted(numbers)
             winning_numbers = set(num_list)
