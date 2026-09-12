@@ -336,7 +336,7 @@ class StreamCog(commands.Cog):
 
     @set_announce.error
     async def set_announce_error(
-        self, interaction: discord.Interaction, error: app_commands.CommandError
+        self, interaction: discord.Interaction, error: Exception
     ):
         if isinstance(error, app_commands.MissingPermissions):
             await interaction.response.send_message(
