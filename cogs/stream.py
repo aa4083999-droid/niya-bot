@@ -34,12 +34,8 @@ def get_announce_channel_id():
 current_channel_id = get_announce_channel_id()
 
 print(f"🔍 TWITCH_CLIENT_ID: {'✅ 已設定' if TWITCH_CLIENT_ID else '❌ 未設定'}")
-print(
-    f"🔍 TWITCH_CLIENT_SECRET: {'✅ 已設定' if TWITCH_CLIENT_SECRET else '❌ 未設定'}"
-)
-print(
-    f"🔍 ANNOUNCE_CHANNEL_ID: {'✅ 已設定' if current_channel_id != 0 else '❌ 未設定'}"
-)
+print(f"🔍 TWITCH_CLIENT_SECRET: {'✅ 已設定' if TWITCH_CLIENT_SECRET else '❌ 未設定'}")
+print(f"🔍 ANNOUNCE_CHANNEL_ID: {'✅ 已設定' if current_channel_id != 0 else '❌ 未設定'}")
 
 MISSING_TWITCH_ENV = (
     not TWITCH_CLIENT_ID
