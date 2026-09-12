@@ -4,7 +4,7 @@ from discord import app_commands
 from discord.ext import commands
 import yt_dlp
 
-# 設定 yt-dlp 參數：只抓取最佳音訊，不下載影片，並且預設使用 auto 關鍵字搜尋
+# 設定 yt-dlp 參數：加入 cookiefile 以繞過 YouTube 登入防護
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'extractaudio': True,
@@ -19,6 +19,7 @@ YTDL_OPTIONS = {
     'no_warnings': True,
     'default_search': 'auto',
     'source_address': '0.0.0.0',
+    'cookiefile': 'cookies.txt',  # 讀取根目錄下的 cookies.txt
 }
 
 # FFmpeg 參數：設定重新連線機制，避免因網路波動導致音樂中斷
@@ -63,7 +64,6 @@ class MusicCog(commands.Cog):
                 self.bot.loop
             )
         else:
-            # 佇列為空，過一段時間後可以自動離開（此處先不做自動離開，視需求可擴充）
             pass
 
     @app_commands.command(name="play", description="點播 YouTube 歌曲 (輸入關鍵字或網址)")
@@ -87,8 +87,8 @@ class MusicCog(commands.Cog):
         # 透過 yt-dlp 搜尋/解析音樂
         loop = self.bot.loop
         try:
-            # run_in_executor 避免阻塞機器人主執行緒
-            data = await loop.run_in_executor(None, lambda: ytdl.extract_info(f"ytsearch:{query}", download=False))
+            # 移除強制 ytsearch 前綴，讓 default_search: 'auto' 自行判斷網址或關鍵字
+            data = await loop.run_in_executor(None, lambda: ytdl.extract_info(query, download=False))
             
             if 'entries' in data:
                 # 如果是搜尋關鍵字，取第一個結果
@@ -124,7 +124,7 @@ class MusicCog(commands.Cog):
     async def skip(self, interaction: discord.Interaction):
         voice_client = interaction.guild.voice_client
         if voice_client and voice_client.is_playing():
-            voice_client.stop() # stop() 會觸發 play_next 中的 after callback，自動播下一首
+            voice_client.stop() 
             await interaction.response.send_message("⏭️ 已跳過當前歌曲！")
         else:
             await interaction.response.send_message("❌ 目前沒有正在播放的歌曲！", ephemeral=True)
@@ -135,7 +135,6 @@ class MusicCog(commands.Cog):
         if not queue:
             return await interaction.response.send_message("📭 目前佇列是空的喔！")
 
-        # 將佇列排版成文字
         queue_text = ""
         for i, song in enumerate(queue):
             queue_text += f"**{i+1}.** {song['title']}\n"
@@ -147,7 +146,6 @@ class MusicCog(commands.Cog):
     async def stop(self, interaction: discord.Interaction):
         voice_client = interaction.guild.voice_client
         if voice_client:
-            # 清空佇列
             if interaction.guild_id in self.queues:
                 self.queues[interaction.guild_id].clear()
             
