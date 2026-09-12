@@ -65,6 +65,10 @@ class MyBot(commands.Bot):
             except Exception:
                 log.exception("載入模組失敗：%s", extension)
 
+        # 檢查目前 tree 內收集到了哪些斜線指令
+        commands_list = self.tree.get_commands()
+        log.info("目前 tree 內共收集到 %d 個斜線指令：{[c.name for c in commands_list]}", len(commands_list))
+
         # 進行強效防雙胞胎的開機自動指令同步
         guild_id = self.get_guild_id_from_config()
         try:
@@ -96,10 +100,7 @@ class MyBot(commands.Bot):
         if message.author.bot:
             return
 
-        # 1. 在終端機印出收到的文字，確認機器人有沒有「瞎掉」
         log.info(f"💬 收到來自 {message.author.name} 的訊息: {message.content}")
-
-        # 2. 讓下方定義的 @bot.command() async def sync 正常接手運作
         await super().on_message(message)
 
 
@@ -112,31 +113,26 @@ async def sync(ctx, mode: str = None):
     """
     手動同步斜線指令 (僅限伺服器管理員使用)
     用法：
-    !sync        -> 進行全域同步 (需等待 Discord 快取)
-    !sync guild  -> 清除舊快取並僅同步至當前伺服器 (秒速生效，解決雙胞胎問題)
+    !sync       -> 進行全域同步 (需等待 Discord 快取)
+    !sync guild -> 清除舊快取並僅同步至當前伺服器 (秒速生效，解決雙胞胎問題)
     """
-    # 手動檢查是否為管理員
     if not ctx.author.guild_permissions.administrator:
         await ctx.send(":x: 權限不足：你必須是**伺服器管理員**才能使用這個指令！", delete_after=10)
         return
 
     try:
-        # 嘗試刪除管理員輸入的指令文字 (例如: !sync guild)，保持版面乾淨
         try:
             await ctx.message.delete()
         except Exception:
-            pass 
+            pass  
 
         if mode == "guild":
-            # 1. 先清除該伺服器上殘留的舊指令與重複快取
             ctx.bot.tree.clear_commands(guild=ctx.guild)
             await ctx.bot.tree.sync(guild=ctx.guild)
             
-            # 2. 重新將全域指令複製並同步到當前伺服器
             bot.tree.copy_global_to(guild=ctx.guild)
             synced = await bot.tree.sync(guild=ctx.guild)
             
-            # 3. 回報並在 10 秒後自動刪除
             await ctx.send(
                 f":white_check_mark: 已徹底清除舊快取並重新同步 **{len(synced)}** 個指令至 **當前伺服器 ({ctx.guild.name})**！\n*(請大家按 `Ctrl + R` 重新整理，重複的指令就會消失)*", 
                 delete_after=10
@@ -178,7 +174,7 @@ async def on_app_command_error(
 async def main():
     token = os.getenv("DISCORD_TOKEN")
     if token:
-        token = token.strip('"\' \r\n')  # 自動去除可能殘留的引號與空白
+        token = token.strip('"\' \r\n')  
 
     if not token:
         raise RuntimeError("找不到 DISCORD_TOKEN 環境變數，請確認 .env 或系統環境變數設定。")
