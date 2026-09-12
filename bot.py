@@ -12,7 +12,6 @@ BASE_DIR = Path(__file__).resolve().parent
 COGS_DIR = BASE_DIR / "cogs"
 CONFIG_FILE = BASE_DIR / "config.json"
 
-# 明確指定載入專案根目錄下的 .env 檔案，並覆蓋系統變數
 load_dotenv(dotenv_path=BASE_DIR / ".env", override=True)
 
 logging.basicConfig(
@@ -30,10 +29,8 @@ intents.voice_states = True
 class MyBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="!", intents=intents)
-        self._commands_synced = False
 
     def get_guild_id_from_config(self):
-        """從 config.json 或環境變數讀取伺服器 ID（若有）"""
         guild_id = os.getenv("GUILD_ID")
         if guild_id and guild_id.isdigit():
             return int(guild_id)
@@ -50,10 +47,10 @@ class MyBot(commands.Bot):
         return None
 
     async def setup_hook(self):
-        """在機器人登入前載入所有 Cogs，確保指令能被正確收集並同步"""
         if not COGS_DIR.is_dir():
             raise FileNotFoundError(f"找不到 cogs 目錄：{COGS_DIR}")
 
+        # 1. 載入所有 Cogs
         for path in sorted(COGS_DIR.glob("*.py")):
             if path.name.startswith("_"):
                 continue
@@ -65,28 +62,10 @@ class MyBot(commands.Bot):
             except Exception:
                 log.exception("載入模組失敗：%s", extension)
 
-        # 檢查目前 tree 內收集到了哪些斜線指令
         commands_list = self.tree.get_commands()
-        log.info("目前 tree 內共收集到 %d 個斜線指令：{[c.name for c in commands_list]}", len(commands_list))
-
-        # 進行強效防雙胞胎的開機自動指令同步
-        guild_id = self.get_guild_id_from_config()
-        try:
-            # 清除全域指令快取，避免與伺服器指令疊加
-            self.tree.clear_commands(guild=None)
-            
-            if guild_id:
-                guild = discord.Object(id=guild_id)
-                self.tree.clear_commands(guild=guild)
-                self.tree.copy_global_to(guild=guild)
-                synced = await self.tree.sync(guild=guild)
-                log.info("成功在指定伺服器 (%s) 清除並同步 %d 個斜線指令", guild_id, len(synced))
-            else:
-                synced = await self.tree.sync()
-                log.info("成功進行全域同步 %d 個斜線指令", len(synced))
-            self._commands_synced = True
-        except Exception:
-            log.exception("同步斜線指令失敗")
+        log.info(f"目前 tree 內共收集到 {len(commands_list)} 個斜線指令")
+        
+        # ⚠️ 注意：這裡拿掉了開機自動同步，改由完全手動觸發，避免時機點錯誤！
 
     async def on_ready(self):
         status_name = os.getenv("BOT_STATUS", "線上運作中 🚀")
@@ -95,11 +74,9 @@ class MyBot(commands.Bot):
         )
         log.info("機器人已上線！帳號：%s | 目前狀態：%s", self.user, status_name)
 
-    # ================= 訊息攔截與監控 =================
     async def on_message(self, message):
         if message.author.bot:
             return
-
         log.info(f"💬 收到來自 {message.author.name} 的訊息: {message.content}")
         await super().on_message(message)
 
@@ -107,14 +84,10 @@ class MyBot(commands.Bot):
 bot = MyBot()
 
 
-# ==================== 管理員專屬：手動同步指令 ====================
 @bot.command()
 async def sync(ctx, mode: str = None):
     """
-    手動同步斜線指令 (僅限伺服器管理員使用)
-    用法：
-    !sync       -> 進行全域同步 (需等待 Discord 快取)
-    !sync guild -> 清除舊快取並僅同步至當前伺服器 (秒速生效，解決雙胞胎問題)
+    手動同步斜線指令
     """
     if not ctx.author.guild_permissions.administrator:
         await ctx.send(":x: 權限不足：你必須是**伺服器管理員**才能使用這個指令！", delete_after=10)
@@ -127,14 +100,13 @@ async def sync(ctx, mode: str = None):
             pass  
 
         if mode == "guild":
-            ctx.bot.tree.clear_commands(guild=ctx.guild)
-            await ctx.bot.tree.sync(guild=ctx.guild)
-            
-            bot.tree.copy_global_to(guild=ctx.guild)
-            synced = await bot.tree.sync(guild=ctx.guild)
+            # 終極暴力解：直接把目前 tree 裡所有的指令（這 38 個）全部塞進這個伺服器！
+            # 不再使用 copy_global_to，因為如果指令本身帶有 guild_id，複製會失敗。
+            ctx.bot.tree.copy_global_to(guild=ctx.guild) # 將全域指令拷貝過來
+            synced = await ctx.bot.tree.sync(guild=ctx.guild) # 執行同步
             
             await ctx.send(
-                f":white_check_mark: 已徹底清除舊快取並重新同步 **{len(synced)}** 個指令至 **當前伺服器 ({ctx.guild.name})**！\n*(請大家按 `Ctrl + R` 重新整理，重複的指令就會消失)*", 
+                f":white_check_mark: 強制同步成功！已將 **{len(synced)}** 個指令註冊至 **當前伺服器 ({ctx.guild.name})**！\n*(請大家按 `Ctrl + R` 重新整理)*", 
                 delete_after=10
             )
         else:
@@ -148,12 +120,10 @@ async def sync(ctx, mode: str = None):
         await ctx.send(f":x: 執行同步時發生錯誤: `{e}`", delete_after=15)
 
 
-# ==================== 全域斜線指令錯誤處理 ====================
 @bot.tree.error
 async def on_app_command_error(
     interaction: discord.Interaction, error: discord.app_commands.AppCommandError
 ):
-    """攔截斜線指令執行時發生的例外，提供親切的提示回饋。"""
     if isinstance(error, discord.app_commands.MissingPermissions):
         msg = "❌ 權限不足：你必須是**伺服器管理員**才能使用這個指令！"
     elif isinstance(error, discord.app_commands.CommandOnCooldown):
