@@ -19,7 +19,7 @@ YTDL_OPTIONS = {
     'no_warnings': True,
     'default_search': 'auto',
     'source_address': '0.0.0.0',
-    'cookiefile': 'cookies.txt',  # 讀取根目錄下的 cookies.txt
+    'cookiefile': 'cookies.txt',  # 讀取伺服器根目錄下的 cookies.txt
 }
 
 # FFmpeg 參數：設定重新連線機制，避免因網路波動導致音樂中斷
