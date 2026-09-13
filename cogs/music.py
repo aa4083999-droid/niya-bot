@@ -4,7 +4,7 @@ from discord import app_commands
 from discord.ext import commands
 import yt_dlp
 
-# 設定 yt-dlp 參數：加入 cookiefile 以繞過 YouTube 登入防護
+# 設定 yt-dlp 參數：加入完整防護繞過與解碼設定
 YTDL_OPTIONS = {
     'format': 'bestaudio/best',
     'extractaudio': True,
@@ -20,6 +20,9 @@ YTDL_OPTIONS = {
     'default_search': 'auto',
     'source_address': '0.0.0.0',
     'cookiefile': 'cookies.txt',  # 讀取伺服器根目錄下的 cookies.txt
+    'js_runtimes': {'deno': '/home/ubuntu/.deno/bin/deno'},
+    'remote_components': {'ejs': 'github'},
+    'extractor_args': {'youtube': {'client': ['tv']}},
 }
 
 # FFmpeg 參數：設定重新連線機制，避免因網路波動導致音樂中斷
