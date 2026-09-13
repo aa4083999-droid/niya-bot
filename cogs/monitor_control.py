@@ -6,7 +6,7 @@ import os
 import asyncio
 
 CONFIG_FILE = "config.json"
-DEFAULT_TARGETS = ["Aqua", "黑炭", "檸檬", "啊嗚Awu", "妃妃", "均欸", "叮咚雞"]
+DEFAULT_TARGETS = ["Aqua", "黑炭", "檸檬", "啊嗚Awu", "妃妃", "均欸", "叮咚雞", "mili寶寶", "檸檬寶寶"]
 
 def load_config():
     data = {}
